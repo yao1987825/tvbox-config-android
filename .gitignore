@@ -26,4 +26,4 @@ Thumbs.db
 
 # Backup files from editing
 *.bak
-*.tmp
+*.tmpdist/
