@@ -3,9 +3,18 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: '标记为预发布版本'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -26,11 +35,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # 编译需要: platforms 34, build-tools 34.0.0
-          # 接受 Android SDK 许可
-          api-level: '34'
-          build-tools-version: '34.0.0'
-          packages: 'platform-tools'
+          # 安装 platform-tools + 编译所需 SDK 组件
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -40,19 +46,63 @@ jobs:
       - name: Write local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls $ANDROID_HOME
 
       - name: Build with Gradle
         run: |
           gradle assembleDebug --no-daemon --stacktrace --warning-mode=summary
-        env:
-          GRADLE_OPTS: -Dorg.gradle.warning.mode=summary
 
-      - name: Upload APK
+      - name: Rename APK with version
+        id: rename
+        run: |
+          VERSION_NAME="1.0.0"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          APK_NAME="tvbox-config-android-${VERSION_NAME}-${SHORT_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "${APK_NAME}"
+          echo "apk_name=${APK_NAME}" >> $GITHUB_OUTPUT
+          ls -la "${APK_NAME}"
+
+      - name: Create GitHub Release (push / tag / 手动触发)
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v1.0.0-build-{0}', github.run_number) }}
+          name: ${{ github.event_name == 'push' && 'Latest Build' || 'Manual Build' }}
+          generate_release_notes: true
+          draft: ${{ github.event_name == 'pull_request' }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' || github.ref_type == 'tag' }}
+          files: |
+            ${{ steps.rename.outputs.apk_name }}
+          body: |
+            ## TVBox 配置生成器 · Android App
+
+            基于 JS 逆向自 [17nas.com/tvbox-config.php](https://17nas.com/tvbox-config.php) 的原生 Kotlin + Jetpack Compose 实现。
+
+            ### 使用说明
+
+            1. 下载 APK 并安装到 Android 手机 (Android 7.0+)
+            2. 打开 App, 填写视频源 / 解析 / 直播源 / 全局设置
+            3. 点击右上角 **Base64** 图标, 复制生成的配置 URL
+            4. 把配置 URL 粘贴到 TVBox 即可使用
+
+            ### 算法说明
+
+            - **Base64 编码**: TVBox 标准 URL 格式 `8位数字**base64`
+            - **UTF-8 安全**: 通过 `kotlinx.serialization` + Android `Base64` 实现, 与 JS 原版**字节级兼容**
+            - **多预设**: 通过 DataStore 持久化保存多套配置
+
+            ### 版本
+
+            - versionName: 1.0.0
+            - commit: ${{ github.sha }}
+            - workflow: #${{ github.run_number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK as artifact (fallback for PR)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tvbox-config-android
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          path: ${{ steps.rename.outputs.apk_name }}
+          if-no-files-found: warn
           retention-days: 14
