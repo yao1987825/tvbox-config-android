@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -22,36 +22,37 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # 编译需要: platforms 34, build-tools 34.0.0
+          # 接受 Android SDK 许可
+          api-level: '34'
+          build-tools-version: '34.0.0'
+          packages: 'platform-tools'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
 
-      - name: Build with Gradle
-        working-directory: android-app
+      - name: Write local.properties
         run: |
-          gradle assembleDebug --no-daemon --stacktrace
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls $ANDROID_HOME
+
+      - name: Build with Gradle
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace --warning-mode=summary
         env:
-          # 中文路径警告抑制 (本项目在中文路径下也能正常编译)
           GRADLE_OPTS: -Dorg.gradle.warning.mode=summary
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: tvbox-config-android
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload mapping/logs (可选)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            android-app/app/build/outputs/logs/
-            android-app/build/reports/
-          if-no-files-found: ignore
-          retention-days: 7
