@@ -26,11 +26,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tvbox.configgen.data.Base64Util
 import com.tvbox.configgen.data.DEFAULT_FLAGS
 import com.tvbox.configgen.data.DEFAULT_WALLPAPER
+import com.tvbox.configgen.data.FileExporter
 import com.tvbox.configgen.data.Live
 import com.tvbox.configgen.data.Parse
 import com.tvbox.configgen.data.ParseExt
 import com.tvbox.configgen.data.Site
 import com.tvbox.configgen.ui.ConfigViewModel
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +47,7 @@ fun MainScreen(vm: ConfigViewModel = viewModel()) {
     var showSavePresetDialog by remember { mutableStateOf(false) }
     var showPresetsDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -112,7 +115,21 @@ fun MainScreen(vm: ConfigViewModel = viewModel()) {
                         onWallpaperChange = vm::setWallpaper,
                         onReset = vm::resetAll,
                         onSavePreset = { showSavePresetDialog = true },
-                        onImport = { showImportDialog = true }
+                        onImport = { showImportDialog = true },
+                        onDownloadJson = {
+                            val uri = FileExporter.saveJsonToDownloads(ctx, jsonText)
+                            val msg = if (uri != null) "已保存到 Downloads/tvbox-config.json" else "保存失败,请检查存储权限"
+                            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+                        },
+                        onShareJson = {
+                            val intent = FileExporter.shareJson(ctx, jsonText)
+                            if (intent != null) ctx.startActivity(intent)
+                            else Toast.makeText(ctx, "分享失败", Toast.LENGTH_SHORT).show()
+                        },
+                        onCopyBase64 = {
+                            copyToClipboard(ctx, "tvbox_config", vm.generateBase64())
+                            Toast.makeText(ctx, "Base64 已复制", Toast.LENGTH_SHORT).show()
+                        }
                     )
                 }
             }
@@ -168,7 +185,10 @@ private fun GlobalTab(
     onWallpaperChange: (String) -> Unit,
     onReset: () -> Unit,
     onSavePreset: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onDownloadJson: () -> Unit,
+    onShareJson: () -> Unit,
+    onCopyBase64: () -> Unit
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -197,14 +217,49 @@ private fun GlobalTab(
     Spacer(Modifier.height(16.dp))
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("操作", style = MaterialTheme.typography.labelLarge)
+            Text("导出配置", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "下载 JSON 文件后可上传到自己的服务器,TVBox 通过 URL 加载。也可直接分享给他人。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onDownloadJson) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("下载 JSON")
+                }
+                OutlinedButton(onClick = onShareJson) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("分享")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onCopyBase64) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("复制 Base64")
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("预设管理", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSavePreset) { Text("保存为预设") }
                 OutlinedButton(onClick = onImport) { Text("导入Base64") }
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onReset, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+            OutlinedButton(
+                onClick = onReset,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
                 Icon(Icons.Default.RestartAlt, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("重置所有配置")

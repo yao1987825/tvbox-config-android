@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 用于 FileProvider 分享 cache 目录下的临时文件 -->
+    <cache-path name="shares" path="shares/" />
+</paths>
